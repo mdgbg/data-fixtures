@@ -47,13 +47,32 @@ class ORMPurger implements PurgerInterface
     private $purgeMode = self::PURGE_MODE_DELETE;
 
     /**
+     * An array of table names which will be purched
+     *
+     * @var array
+     */
+    private $purgedTables = [];
+
+    /**
      * Construct new purger instance.
      *
      * @param EntityManagerInterface $em EntityManagerInterface instance used for persistence.
+     * @param array $purgedTables tables to be purged
      */
-    public function __construct(EntityManagerInterface $em = null)
+    public function __construct(EntityManagerInterface $em = null, array $purgedTables = [])
     {
         $this->em = $em;
+        $this->setPurgedTables($purgedTables);
+    }
+
+    /**
+     * Set the tables to be purged
+     *
+     * @param array $purgedTables
+     */
+    public function setPurgedTables(array $purgedTables = [])
+    {
+        $this->purgedTables = $purgedTables ? array_flip($purgedTables) : [];
     }
 
     /**
@@ -121,15 +140,17 @@ class ORMPurger implements PurgerInterface
         for ($i = count($commitOrder) - 1; $i >= 0; --$i) {
             $class = $commitOrder[$i];
 
+            $tableName = $this->getTableName($class, $platform);
+
             if (
                 ($class->isInheritanceTypeSingleTable() && $class->name != $class->rootEntityName) ||
                 (isset($class->isEmbeddedClass) && $class->isEmbeddedClass) ||
-                $class->isMappedSuperclass
+                $class->isMappedSuperclass || !$this->shouldPurgeTable($tableName)
             ) {
                 continue;
             }
 
-            $orderedTables[] = $this->getTableName($class, $platform);
+            $orderedTables[] = $tableName;
         }
 
         $connection = $this->em->getConnection();
@@ -143,6 +164,20 @@ class ORMPurger implements PurgerInterface
         }
     }
 
+    /**
+     * @param $tableName
+     * @return bool
+     */
+    private function shouldPurgeTable($tableName)
+    {
+        return isset($this->purgedTables[$tableName]) ? true : false;
+    }
+
+    /**
+     * @param EntityManagerInterface $em
+     * @param array $classes
+     * @return array
+     */
     private function getCommitOrder(EntityManagerInterface $em, array $classes)
     {
         $calc = new CommitOrderCalculator;
